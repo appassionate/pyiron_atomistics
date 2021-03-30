@@ -89,8 +89,9 @@ class SQSJob(AtomisticGenericJob):
             quasirandomness). (Default is 1.)
         - lattice (None/dict): Specifies the sublattice on which the calculation will run. For example to place
             Tantalum carbide on the nitrogen sites of a boron nitride system use {'N': {'Ta': 0.8, 'C': 0.2}}.
-            To replace a specie just use B=Hf:1.0. Only one sublattice is supported yet. This option will override
-            'mole_fraction'.
+            To replace a specie just use {'B': {'Hf': 1.0}}. Only one sublattice is supported yet. This option will
+            override 'mole_fraction'.
+
     Example:
         Case I: Get SQS for a given mole fraction:
 

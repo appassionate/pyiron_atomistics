@@ -87,7 +87,10 @@ class SQSJob(AtomisticGenericJob):
             random shuffling procedure. (Default is 1e6)
         - n_output_structures (int): How many different SQS structures to return (in decreasing special
             quasirandomness). (Default is 1.)
-
+        - lattice (None/dict): Specifies the sublattice on which the calculation will run. For example to place
+            Tantalum carbide on the nitrogen sites of a boron nitride system use {'N': {'Ta': 0.8, 'C': 0.2}}.
+            To replace a specie just use B=Hf:1.0. Only one sublattice is supported yet. This option will override
+            'mole_fraction'.
     Example:
         Case I: Get SQS for a given mole fraction:
 
@@ -129,6 +132,7 @@ class SQSJob(AtomisticGenericJob):
         # self.input = InputList(table_name='input')
         self.input = DataContainer(table_name='custom_dict')
         self.input.mole_fractions = dict()
+        self.input.lattice = None
         self.input.weights = None
         self.input.objective = 0.0
         self.input.iterations = 1e6
@@ -195,17 +199,56 @@ class SQSJob(AtomisticGenericJob):
     
     # This function is executed 
     def run_static(self):
-        self._lst_of_struct, decmp, iterations, cycle_time = get_sqs_structures(
-            structure=self.structure, 
-            mole_fractions={
-                k:v for k,v in self.input.mole_fractions.items()
-            },
-            weights=self.input.weights,
-            objective=self.input.objective,
-            iterations=self.input.iterations,
-            output_structures=self.input.n_output_structures,
-            num_threads=self.server.cores
-        )
+        if self.input.lattice is None:
+            self._lst_of_struct, decmp, iterations, cycle_time = get_sqs_structures(
+                structure=self.structure,
+                mole_fractions={
+                    k: v for k, v in self.input.mole_fractions.items()
+                },
+                weights=self.input.weights,
+                objective=self.input.objective,
+                iterations=self.input.iterations,
+                output_structures=self.input.n_output_structures,
+                num_threads=self.server.cores
+            )
+        else:
+            if not isinstance(self.input.lattice, dict):
+                raise ValueError("'lattice' has to be a dict!")
+            if len(self.input.lattice.keys()) >= 2:
+                raise AssertionError("Only one sublattice is supported yet.")
+
+            species_orig = {i: species.Abbreviation for i, species in enumerate(self.structure.species)}
+
+            sub_species = list(self.input.lattice.keys())[0]
+            mole_fractions_sub = self.input.lattice[sub_species]
+
+            index_sub = [i for i, ind in enumerate(self.structure.indices) if species_orig[ind] == sub_species]
+            index_rem = [i for i, ind in enumerate(self.structure.indices) if species_orig[ind] != sub_species]
+
+            structure_sub = self.structure.copy()
+            del structure_sub[index_rem]
+
+            list_of_structures, decmp, iterations, cycle_time = get_sqs_structures(
+                structure=structure_sub,
+                mole_fractions={
+                    k: v for k, v in mole_fractions_sub.items()
+                },
+                weights=self.input.weights,
+                objective=self.input.objective,
+                iterations=self.input.iterations,
+                output_structures=self.input.n_output_structures,
+                num_threads=self.server.cores
+            )
+
+            for los in list_of_structures:
+                structure_final = self.structure.copy()
+                species_final = {i: species.Abbreviation for i, species in enumerate(los.species)}
+
+                for ind_final, ind_los in zip(index_sub, los.indices):
+                    structure_final[ind_final] = species_final[ind_los]
+
+                self._lst_of_struct.append(structure_final)
+
         for i, structure in enumerate(self._lst_of_struct):
             with self.project_hdf5.open("output/structures/structure_" + str(i)) as h5:
                 structure.to_hdf(h5)

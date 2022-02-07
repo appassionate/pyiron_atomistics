@@ -20,6 +20,11 @@ from pyiron_base.generic.util import Deprecator
 from scipy.spatial import ConvexHull
 from typing import Type
 
+try:  # scipy <1.8
+    from scipy.spatial.qhull import _QhullUser
+except ImportError:  # scipy >= 1.8
+    from scipy.spatial._qhull import _QhullUser
+
 deprecate = Deprecator()
 
 __author__ = "Joerg Neugebauer, Sam Waseda"
